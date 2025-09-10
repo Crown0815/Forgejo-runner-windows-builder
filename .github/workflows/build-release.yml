@@ -154,6 +154,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, test]
     if: ${{ always() && needs.build.result == 'success' }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -166,6 +168,5 @@ jobs:
           files: forgejo-runner-windows-*/forgejo-runner-windows-*.exe
           draft: ${{ needs.test.result == 'success' }}
           prerelease: ${{ contains(inputs.tag, 'beta') || contains(inputs.tag, 'alpha') }}
-          token: ${{ secrets.RELEASE_TOKEN }}
           fail_on_unmatched_files: true
           body: See [original release notes](https://code.forgejo.org/forgejo/runner/releases/tag/${{ inputs.tag }}).
