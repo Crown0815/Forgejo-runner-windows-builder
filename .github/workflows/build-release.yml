@@ -3,7 +3,6 @@
 #  - tests the runner on Windows with a Forgejo server container running on Windows Subsystem for Linux (WSL)
 #  - releases the binary artifact (if triggered on a pushed tag)
 #
-# This build is currently supported on https://github.com/Crown0815/forgejo-runner-windows
 
 name: Build Release
 run-name: Build Release ${{ inputs.tag }}
