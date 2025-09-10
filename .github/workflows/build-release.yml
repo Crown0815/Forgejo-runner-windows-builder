@@ -168,4 +168,9 @@ jobs:
           draft: ${{ needs.test.result != 'success' }}
           prerelease: ${{ contains(inputs.tag, 'beta') || contains(inputs.tag, 'alpha') }}
           fail_on_unmatched_files: true
-          body: See [original release notes](https://code.forgejo.org/forgejo/runner/releases/tag/${{ inputs.tag }}).
+          body: |
+            See [original release notes](https://code.forgejo.org/forgejo/runner/releases/tag/${{ inputs.tag }}).
+            
+            Forgejo runner:
+            - [Source Code (zip)](https://code.forgejo.org/forgejo/runner/archive/${{ inputs.tag }}.zip)
+            - [Source Code (tar.gz)](https://code.forgejo.org/forgejo/runner/archive/${{ inputs.tag }}.tar.gz)
