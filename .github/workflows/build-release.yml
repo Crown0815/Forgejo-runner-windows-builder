@@ -5,7 +5,7 @@
 #
 # This build is currently supported on https://github.com/Crown0815/forgejo-runner-windows
 
-name: Build Release
+name: Build Release ${{ inputs.tag }}
 
 on:
   workflow_dispatch:
