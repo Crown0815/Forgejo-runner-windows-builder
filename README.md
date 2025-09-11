@@ -33,8 +33,8 @@ This enables continuous integration and deployment (CI/CD) pipelines, automated 
 The official runner supports Linux only and can be configured to use various execution modes such as containerized (e.g., Docker) or host-based environments. 
 It fetches workflows from the Forgejo server, executes steps defined in YAML files, and handles artifacts, logs, and status updates.
 
-This repository provides a **pre-compiled Windows binary** of the Forgejo Runner, simplifying setup for Windows users. 
-It is based on the official [Forgejo Runner source code](https://code.forgejo.org/forgejo/runner).
+This repository provides a **pre-compiled Windows binary** of the Forgejo Runner, simplifying setup for Windows users.
+It is a build of the official [Forgejo Runner source code](https://code.forgejo.org/forgejo/runner) repository, with **no modifications of the source tree**.
 
 ### Key Features of the Forgejo Runner
 - **Scalability**: Multiple runners can be registered to a single Forgejo instance for distributed execution.
