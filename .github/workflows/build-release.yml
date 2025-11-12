@@ -50,7 +50,7 @@ jobs:
           name: forgejo-runner-windows-${{matrix.architecture}}
           path: forgejo-runner-windows-${{matrix.architecture}}.exe
 
-  test:
+  test-runner:
     name: Run Tests on Windows with Linux Forgejo Server
     runs-on: windows-latest
     env:
@@ -144,16 +144,41 @@ jobs:
           go run main.go create-runner-file --config temporaryConfig.yml --instance ${{ env.FORGEJO_ROOT_URL }} --secret ${{ env.FORGEJO_RUNNER_SECRET }} --name "windows-test-runner"
 
       - name: Windows - Run tests
-        run: go test -v ./...
+        run: go test -v ./internal/...
         env:
           FORGEJO_URL: ${{ env.FORGEJO_ROOT_URL }}
           FORGEJO_RUNNER_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
           FORGEJO_RUNNER_HEX_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
+
+  test-act:
+    name: Run Act Tests on Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Windows - Checkout code
+        uses: actions/checkout@v4
+        with:
+          github-server-url: https://code.forgejo.org
+          repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
+          ref: ${{ inputs.tag }}
+          token: ${{ secrets.CODE_FORGEJO_TOKEN }}
+
+      - name: Windows - Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Windows - Install dependencies
+        run: go mod download
+
+      - name: Windows - Run tests
+        run: go test -v ./act/...
+        env:
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
 
   release:
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: [build, test-runner, test-act]
     if: ${{ always() && needs.build.result == 'success' && inputs.goal != 'test-fork' }}
     permissions:
       contents: write
