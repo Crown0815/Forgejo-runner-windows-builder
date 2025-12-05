@@ -42,8 +42,16 @@ jobs:
         run: |
           env GOOS=windows GOARCH=${{matrix.architecture}} \
           go build \
-            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/internal/pkg/ver.version=${{ inputs.tag }}" \
+            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/v12/internal/pkg/ver.version=${{ inputs.tag }}" \
             -o forgejo-runner-windows-${{matrix.architecture}}.exe
+
+      - name: Check Version Output
+        run: |
+          VERSION_OUTPUT=$(./forgejo-runner-windows-${{matrix.architecture}}.exe --version)
+          if [ "$VERSION_OUTPUT" != "${{ inputs.tag }}" ]; then
+            echo "Version mismatch: got $VERSION_OUTPUT expected ${{ inputs.tag }}"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
