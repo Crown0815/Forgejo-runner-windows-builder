@@ -25,11 +25,19 @@ on:
 
 jobs:
   build:
-    name: Build ${{matrix.architecture}}
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.architecture }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        architecture: ['386', amd64, arm, arm64]
+        include:
+          - architecture: '386'
+            os: windows-latest
+          - architecture: amd64
+            os: windows-latest
+          - architecture: arm
+            os: windows-11-arm
+          - architecture: arm64
+            os: windows-11-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,17 +46,26 @@ jobs:
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
-      - name: Build for ${{matrix.architecture}}
+      - name: Build for ${{ matrix.architecture }}
         run: |
-          env GOOS=windows GOARCH=${{matrix.architecture}} \
-          go build \
-            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/internal/pkg/ver.version=${{ inputs.tag }}" \
-            -o forgejo-runner-windows-${{matrix.architecture}}.exe
+          $env:GOOS = 'windows'
+          $env:GOARCH = '${{ matrix.architecture }}'
+          go build `
+            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/v12/internal/pkg/ver.version=${{ inputs.tag }}" `
+            -o forgejo-runner-windows-${{ matrix.architecture }}.exe
+
+      - name: Check Version Output
+        run: |
+          $VERSION_OUTPUT = & .\forgejo-runner-windows-${{ matrix.architecture }}.exe --version
+          if ($VERSION_OUTPUT -ne 'forgejo-runner version ${{ inputs.tag }}') {
+            Write-Output "Version mismatch: got $VERSION_OUTPUT expected forgejo-runner version ${{ inputs.tag }}"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: forgejo-runner-windows-${{matrix.architecture}}
-          path: forgejo-runner-windows-${{matrix.architecture}}.exe
+          name: forgejo-runner-windows-${{ matrix.architecture }}
+          path: forgejo-runner-windows-${{ matrix.architecture }}.exe
 
   test-runner:
     name: Run Tests on Windows with Linux Forgejo Server
