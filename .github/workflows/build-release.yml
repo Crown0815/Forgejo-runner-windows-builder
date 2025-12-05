@@ -34,8 +34,6 @@ jobs:
             os: windows-latest
           - architecture: amd64
             os: windows-latest
-          - architecture: arm
-            os: windows-11-arm
           - architecture: arm64
             os: windows-11-arm
     steps:
