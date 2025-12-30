@@ -113,6 +113,13 @@ jobs:
           }
           $WSL_IP = $WSL_IP.ToString().Trim()
           Write-Output "Detected WSL_IP: '$WSL_IP'"
+          # Additional validation: Ping the IP from Windows to ensure reachability
+          if (Test-Connection -ComputerName $WSL_IP -Count 1 -Quiet) {
+            Write-Output "WSL IP is reachable via ping."
+          } else {
+            Write-Error "WSL IP '$WSL_IP' is not reachable from Windows. Check WSL networking."
+            exit 1
+          }
           if ($WSL_IP -notmatch '^\d+\.\d+\.\d+\.\d+$') {
             Write-Error "Invalid WSL IP address detected: '$WSL_IP'"
             exit 1
@@ -144,6 +151,34 @@ jobs:
         run: |
           # Expose Docker socket via TCP so Windows can access it
           nohup socat TCP-LISTEN:2375,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /dev/null 2>&1 &
+
+      - name: Windows - Wait for Docker TCP Exposure
+        run: |
+          $DOCKER_HOST = "tcp://${{ env.WSL_IP }}:2375"
+          Write-Output "Waiting for Docker at $DOCKER_HOST to be accessible..."
+          $maxAttempts = ${{ env.MAX_WAIT_ITERATIONS }}
+          $attempt = 0
+          do {
+            $attempt++
+            try {
+              $client = New-Object System.Net.Sockets.TcpClient('${{ env.WSL_IP }}', 2375)
+              $client.Close()
+              Write-Output "Docker TCP port is open! (Attempt $attempt)"
+              break
+            } catch {
+              Write-Output "Attempt $attempt/$maxAttempts failed: $_"
+              Start-Sleep -Seconds 1
+            }
+          } while ($attempt -lt $maxAttempts)
+          if ($attempt -ge $maxAttempts) {
+            Write-Error "Timed out waiting for Docker TCP exposure"
+            exit 1
+          }
+          # Quick test: Query Docker version from Windows
+          $env:DOCKER_HOST = $DOCKER_HOST
+          docker version
+        env:
+          DOCKER_HOST: tcp://${{ env.WSL_IP }}:2375
 
       - name: WSL - Start Forgejo Server
         shell: wsl-bash {0}
