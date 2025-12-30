@@ -91,10 +91,19 @@ jobs:
           wsl-shell-user: root
           additional-packages: bash
 
+      - name: Windows - Get WSL IP
+        run: |
+          $WSL_IP = (wsl -d Alpine ip -4 addr show eth0 | Select-String -Pattern 'inet\s+(\d+\.\d+\.\d+\.\d+)' | ForEach-Object { $_.Matches.Groups[1].Value })
+          if (-not $WSL_IP) {
+            $WSL_IP = (wsl -d Alpine hostname -I).Trim().Split(" ")[0]
+          }
+          Write-Output "WSL_IP=$WSL_IP"
+          echo "FORGEJO_ROOT_URL=http://$WSL_IP:3000/" >> $env:GITHUB_ENV
+
       - name: WSL - Install Docker
         shell: wsl-bash {0}
         run: |
-          apk --update add --no-cache docker curl
+          apk --update add --no-cache docker curl socat
 
           rc-update add docker default
           openrc default
@@ -107,6 +116,12 @@ jobs:
           done
           [ $i -lt ${{ env.MAX_WAIT_ITERATIONS }} ] && echo "Docker is ready!" || { echo "Timed out waiting for Docker" ; exit 1; }
 
+      - name: WSL - Expose Docker Socket
+        shell: wsl-bash {0}
+        run: |
+          # Expose Docker socket via TCP so Windows can access it
+          nohup socat TCP-LISTEN:2375,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /dev/null 2>&1 &
+
       - name: WSL - Start Forgejo Server
         shell: wsl-bash {0}
         run: |
@@ -116,7 +131,7 @@ jobs:
             -e USER_GID=1000 \
             -e FORGEJO__security__INSTALL_LOCK=true \
             -e FORGEJO__server__DOMAIN=localhost \
-            -e FORGEJO__server__ROOT_URL=${{ env.FORGEJO_ROOT_URL }} \
+            -e FORGEJO__server__ROOT_URL=$FORGEJO_ROOT_URL \
             codeberg.org/forgejo/forgejo:11.0-rootless
 
       - name: Windows - Set up Go
@@ -133,7 +148,7 @@ jobs:
         shell: wsl-bash {0}
         run: |
           i=0
-          until curl -s ${{ env.FORGEJO_ROOT_URL }}/api/v1/version > /dev/null || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
+          until curl -s $FORGEJO_ROOT_URL/api/v1/version > /dev/null || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
             echo "Waiting for Forgejo to be ready... ($(( ++i ))/${{ env.MAX_WAIT_ITERATIONS }})"
             sleep 1
           done
@@ -156,14 +171,17 @@ jobs:
           Set-Content -Path temporaryConfig.yml -Value $configFileContent
 
           # Register the runner
-          go run main.go create-runner-file --config temporaryConfig.yml --instance ${{ env.FORGEJO_ROOT_URL }} --secret ${{ env.FORGEJO_RUNNER_SECRET }} --name "windows-test-runner"
+          go run main.go create-runner-file --config temporaryConfig.yml --instance $env:FORGEJO_ROOT_URL --secret ${{ env.FORGEJO_RUNNER_SECRET }} --name "windows-test-runner"
+        env:
+          DOCKER_HOST: tcp://localhost:2375
 
       - name: Windows - Run tests
         run: go test -v ./internal/...
         env:
-          FORGEJO_URL: ${{ env.FORGEJO_ROOT_URL }}
+          FORGEJO_URL: $env:FORGEJO_ROOT_URL
           FORGEJO_RUNNER_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
           FORGEJO_RUNNER_HEX_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
+          DOCKER_HOST: tcp://localhost:2375
 
   test-act:
     name: Run Act Tests on Windows
@@ -178,6 +196,35 @@ jobs:
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
+      - name: Windows - Setup Windows Subsystem for Linux (WSL)
+        uses: Vampire/setup-wsl@v6
+        with:
+          distribution: Alpine
+          wsl-shell-user: root
+          additional-packages: bash
+
+      - name: WSL - Install Docker
+        shell: wsl-bash {0}
+        run: |
+          apk --update add --no-cache docker socat
+
+          rc-update add docker default
+          openrc default
+
+          # Wait for Docker to be ready
+          i=0
+          until docker info > /dev/null 2>&1 || (( i == 30 )); do
+            echo "Waiting for Docker to be ready... ($(( ++i ))/30)"
+            sleep 1
+          done
+          [ $i -lt 30 ] && echo "Docker is ready!" || { echo "Timed out waiting for Docker" ; exit 1; }
+
+      - name: WSL - Expose Docker Socket
+        shell: wsl-bash {0}
+        run: |
+          # Expose Docker socket via TCP so Windows can access it
+          nohup socat TCP-LISTEN:2375,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /dev/null 2>&1 &
+
       - name: Windows - Set up Go
         uses: actions/setup-go@v5
         with:
@@ -190,6 +237,7 @@ jobs:
         run: go test -v ./act/...
         env:
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
+          DOCKER_HOST: tcp://localhost:2375
 
   release:
     runs-on: ubuntu-latest
