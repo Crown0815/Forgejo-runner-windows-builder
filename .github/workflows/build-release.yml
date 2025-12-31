@@ -74,15 +74,11 @@ jobs:
             exit 1
           }
           "WSL_IP=$WSL_IP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $ROOT_URL = "http://$($WSL_IP):3000/"
-          Write-Output "Constructed FORGEJO_ROOT_URL: '$ROOT_URL'"
-          "FORGEJO_ROOT_URL=$ROOT_URL" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: WSL - Install Docker
         shell: wsl-bash {0}
         run: |
-          echo "FORGEJO_ROOT_URL is: ${{ env.FORGEJO_ROOT_URL }}"
-          apk --update add --no-cache docker curl socat
+          apk --update add --no-cache docker curl socat net-tools
 
           rc-update add docker default
           openrc default
@@ -100,6 +96,45 @@ jobs:
         run: |
           # Expose Docker socket via TCP so Windows can access it
           nohup socat TCP-LISTEN:2375,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /dev/null 2>&1 &
+          # Give it a moment to start
+          sleep 2
+          # Check if socat is running
+          if pgrep socat; then
+          echo "Socat is running."
+          else
+          echo "Socat failed to start. Check logs:"
+          cat /tmp/socat.log
+          exit 1
+          fi
+
+      - name: WSL - Verify Docker TCP Port Inside WSL
+        shell: wsl-bash {0}
+        run: |
+          # Check if port 2375 is listening
+          i=0
+          until netstat -tuln | grep ':2375' || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
+            echo "Waiting for port 2375 inside WSL... ($(( ++i ))/${{ env.MAX_WAIT_ITERATIONS }})"
+            sleep 1
+          done
+          if [ $i -lt ${{ env.MAX_WAIT_ITERATIONS }} ]; then
+            echo "Port 2375 is listening inside WSL!"
+            # Test connection inside WSL
+            if curl -s --fail http://localhost:2375/version; then
+              echo "Docker API responds inside WSL."
+            else
+              echo "Docker API test failed inside WSL."
+              exit 1
+            fi
+          else
+            echo "Timed out: Port 2375 not listening inside WSL. Socat logs:"
+            cat /tmp/socat.log
+            exit 1
+          fi
+
+      - name: Windows - Allow Docker Port in Firewall
+        run: |
+          netsh advfirewall firewall add rule name="Allow WSL Docker TCP 2375" dir=in action=allow protocol=TCP localport=2375
+
 
       - name: Windows - Wait for Docker TCP Exposure
         run: |
@@ -110,7 +145,9 @@ jobs:
           do {
             $attempt++
             try {
-              $client = New-Object System.Net.Sockets.TcpClient('${{ env.WSL_IP }}', 2375)
+              # Force IPv4 by parsing the IP
+              $ip = [System.Net.IPAddress]::Parse('${{ env.WSL_IP }}')
+              $client = New-Object System.Net.Sockets.TcpClient($ip, 2375)
               $client.Close()
               Write-Output "Docker TCP port is open! (Attempt $attempt)"
               break
