@@ -94,34 +94,39 @@ jobs:
       - name: WSL - Expose Docker Socket
         shell: wsl-bash {0}
         run: |
-          # Pre-check: Ensure Docker socket exists
+          # Ensure root is in docker group (redundancy for access)
+          addgroup root docker || true
+          # Pre-check: Ensure Docker socket exists and is accessible
           if [ ! -S /var/run/docker.sock ]; then
             echo "Error: Docker socket /var/run/docker.sock not found or not a socket."
             ls -l /var/run/  # Debug: Show directory contents
             docker info      # Debug: Confirm Docker status
             exit 1
           fi
-          # Start socat with logging, force IPv4, and retry if needed
+          # Test socket accessibility (as root)
+          if ! test -r /var/run/docker.sock; then
+            echo "Error: Cannot read Docker socket."
+            exit 1
+          fi
+          # Start socat with verbose debug logging
           i=0
           until [ $i -ge 3 ]; do  # Retry up to 3 times
             echo "Attempting to start socat (try $((i+1))/3)..."
-            nohup socat TCP4-LISTEN:2375,bind=0.0.0.0,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /tmp/socat.log 2>&1 &
+            nohup socat -d -d -d TCP4-LISTEN:2375,bind=0.0.0.0,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /tmp/socat.log 2>&1 &
             sleep 2
             if pgrep socat; then
-              echo "Socat started successfully."
-              break
-            else
-              echo "Socat failed to start on try $((i+1)). Killing any remnants..."
-              pkill socat || true
-            fi
-            i=$((i+1))
-          done
-          if [ $i -ge 3 ]; then
-            echo "Failed to start socat after retries. Dumping logs:"
-            cat /tmp/socat.log || echo "No log file created."
-            ps aux | grep socat  # Debug: Show processes
-            exit 1
-          fi
+              echo "Socat started successfully (initial check)."
+              # Monitor for 5s to see if it stays alive
+              for j in {1..5}; do
+                if pgrep socat; then
+                  echo "Socat still running after $j seconds."
+
+      - name: WSL - Debug Socat in Foreground
+        shell: wsl-bash {0}
+        run: |
+          echo "Running socat in foreground for debug (will hang until killed)..."
+          socat -d -d -d TCP4-LISTEN:2375,bind=0.0.0.0,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock || echo "Foreground socat failed with code $?"
+          # This will output directly; check logs for errors
 
       - name: WSL - Verify Docker TCP Port Inside WSL
         shell: wsl-bash {0}
