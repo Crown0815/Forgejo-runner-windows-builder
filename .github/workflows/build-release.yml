@@ -7,6 +7,7 @@ name: Build Release
 run-name: Build Release ${{ inputs.tag }}
 
 on:
+  push:
   workflow_dispatch:
     inputs:
       tag:
@@ -23,173 +24,86 @@ on:
           - test-fork
         default: release
 
-env:
-  MAX_WAIT_ITERATIONS: 30
-
 jobs:
 
   test-docker:
     name: Test docker running on Windows
     runs-on: windows-latest
-
     steps:
 
       - name: Windows - Setup Windows Subsystem for Linux (WSL)
         uses: Vampire/setup-wsl@v6
         with:
-          distribution: Alpine
-          wsl-shell-user: root
-          additional-packages: bash
+          distribution: Ubuntu-22.04
+          update: true
+          additional-packages: docker.io
+          wsl-shell-user: runner
+          set-as-default: 'true'
 
-      - name: Windows - Get WSL IP
-        id: get-ip
+      - name: Enable systemd in WSL
+        shell: pwsh
         run: |
-          $WSL_IP_RAW = (wsl -d Alpine ip -4 addr show eth0 | Select-String -Pattern 'inet\s+(\d+\.\d+\.\d+\.\d+)')
-          if ($WSL_IP_RAW) {
-            foreach ($match in $WSL_IP_RAW.Matches) {
-              if ($match.Groups[1].Value) {
-                $WSL_IP = $match.Groups[1].Value
-                break
-              }
-            }
-          }
-          if (-not $WSL_IP) {
-            $WSL_IP = (wsl -d Alpine hostname -I).Trim().Split(" ")[0]
-          }
-          if (-not $WSL_IP) {
-            Write-Error "Could not determine WSL IP address"
+          wsl -u root -- bash -c 'echo -e "[boot]\nsystemd=true" > /etc/wsl.conf'
+          echo "Systemd enabled in /etc/wsl.conf"
+
+      - name: Restart WSL to apply systemd
+        shell: pwsh
+        run: |
+          wsl --shutdown
+          wsl -u runner --exec echo "WSL restarted"
+
+      - name: Re-install Docker if needed and add user to group
+        shell: pwsh
+        run: |
+          wsl -u root -- bash -c 'apt-get update && apt-get install -y docker.io'
+          wsl -u root -- bash -c 'usermod -aG docker runner'
+          echo "Docker re-installed and user added to group"
+
+      - name: Configure Docker daemon
+        shell: pwsh
+        run: |
+          wsl -u root -- bash -c 'echo "Update docker.service to listen on TCP"'
+          wsl -u root -- bash -c 'sed -i "s|ExecStart=/usr/bin/dockerd|ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375|" /lib/systemd/system/docker.service'
+
+      - name: Restart Docker daemon
+        shell: pwsh
+        run: |
+          wsl -u root -- bash -c 'echo "Restart docker daemon"'
+          wsl -u root -- bash -c 'systemctl daemon-reload'
+          wsl -u root -- bash -c 'echo "Restart docker"'
+          wsl -u root -- bash -c 'systemctl restart docker'
+
+      - name: Verify daemon is running and exposed
+        shell: pwsh
+        run: |
+          wsl -u runner -- bash -c 'echo "Verify daemon is running and exposed"'
+          wsl -u runner -- bash -c 'docker version'
+
+      - name: Run Linux Docker containers from Windows host
+        shell: pwsh
+        run: |
+          $wsl_ip = (wsl hostname -I).Trim().Split(' ')[0]
+          if (-not $wsl_ip) {
+            Write-Error "Failed to get WSL IP!"
             exit 1
           }
-          $WSL_IP = $WSL_IP.ToString().Trim()
-          Write-Output "Detected WSL_IP: '$WSL_IP'"
-          # Additional validation: Ping the IP from Windows to ensure reachability
-          if (Test-Connection -ComputerName $WSL_IP -Count 1 -Quiet) {
-            Write-Output "WSL IP is reachable via ping."
-          } else {
-            Write-Error "WSL IP '$WSL_IP' is not reachable from Windows. Check WSL networking."
+          echo "Using WSL IP: $wsl_ip for Docker host"
+          
+          $docker_version_url = "http://{0}:2375/version" -f $wsl_ip
+          echo "Using Docker version URL: $docker_version_url for Docker host"
+
+          # Test raw connection to daemon
+          try {
+            curl.exe -f $docker_version_url | Out-Null
+          } catch {
+            Write-Error "Failed to connect to Docker daemon at $wsl_ip:2375"
             exit 1
           }
-          if ($WSL_IP -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-            Write-Error "Invalid WSL IP address detected: '$WSL_IP'"
-            exit 1
-          }
-          "WSL_IP=$WSL_IP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          
+          $docker_host = "tcp://{0}:2375" -f $wsl_ip
+          echo "Using Docker host URL: $docker_host for Docker operations"
 
-      - name: WSL - Install Docker
-        shell: wsl-bash {0}
-        run: |
-          apk --update add --no-cache docker curl socat net-tools
-
-          rc-update add docker default
-          openrc default
-
-          # Wait for Docker to be ready
-          i=0
-          until docker info > /dev/null 2>&1 || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
-            echo "Waiting for Docker to be ready... ($(( ++i ))/${{ env.MAX_WAIT_ITERATIONS }})"
-            sleep 1
-          done
-          [ $i -lt ${{ env.MAX_WAIT_ITERATIONS }} ] && echo "Docker is ready!" || { echo "Timed out waiting for Docker" ; exit 1; }
-
-      - name: WSL - Expose Docker Socket
-        shell: wsl-bash {0}
-        run: |
-          # Ensure root is in docker group (redundancy for access)
-          addgroup root docker || true
-          # Pre-check: Ensure Docker socket exists and is accessible
-          if [ ! -S /var/run/docker.sock ]; then
-            echo "Error: Docker socket /var/run/docker.sock not found or not a socket."
-            ls -l /var/run/  # Debug: Show directory contents
-            docker info      # Debug: Confirm Docker status
-            exit 1
-          fi
-          # Test socket accessibility (as root)
-          if ! test -r /var/run/docker.sock; then
-            echo "Error: Cannot read Docker socket."
-            exit 1
-          fi
-          # Start socat with verbose debug logging
-          i=0
-          until [ $i -ge 3 ]; do  # Retry up to 3 times
-            echo "Attempting to start socat (try $((i+1))/3)..."
-            nohup socat -d -d -d TCP4-LISTEN:2375,bind=0.0.0.0,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock > /tmp/socat.log 2>&1 &
-            sleep 2
-            if pgrep socat; then
-              echo "Socat started successfully (initial check)."
-              # Monitor for 5s to see if it stays alive
-              for j in {1..5}; do
-                if pgrep socat; then
-                  echo "Socat still running after $j seconds."
-
-      - name: WSL - Debug Socat in Foreground
-        shell: wsl-bash {0}
-        run: |
-          echo "Running socat in foreground for debug (will hang until killed)..."
-          socat -d -d -d TCP4-LISTEN:2375,bind=0.0.0.0,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock || echo "Foreground socat failed with code $?"
-          # This will output directly; check logs for errors
-
-      - name: WSL - Verify Docker TCP Port Inside WSL
-        shell: wsl-bash {0}
-        run: |
-          # Check if port 2375 is listening
-          i=0
-          until netstat -tuln | grep ':2375' || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
-            echo "Waiting for port 2375 inside WSL... ($(( ++i ))/${{ env.MAX_WAIT_ITERATIONS }})"
-            sleep 1
-          done
-          if [ $i -lt ${{ env.MAX_WAIT_ITERATIONS }} ]; then
-            echo "Port 2375 is listening inside WSL!"
-            # Test connection inside WSL
-            if curl -s --fail http://localhost:2375/version; then
-              echo "Docker API responds inside WSL."
-            else
-              echo "Docker API test failed inside WSL."
-              netstat -tuln | grep 2375  # Extra debug
-              exit 1
-            fi
-          else
-            echo "Timed out: Port 2375 not listening inside WSL. Socat logs:"
-            cat /tmp/socat.log || echo "No log file."
-            echo "Debug: Full netstat output"
-            netstat -tuln
-            echo "Debug: Processes involving socat or docker"
-            ps aux | grep -E 'socat|docker'
-            echo "Debug: Docker socket details"
-            ls -l /var/run/docker.sock
-            exit 1
-          fi
-
-      - name: Windows - Allow Docker Port in Firewall
-        run: |
-          netsh advfirewall firewall add rule name="Allow WSL Docker TCP 2375" dir=in action=allow protocol=TCP localport=2375
-
-
-      - name: Windows - Wait for Docker TCP Exposure
-        run: |
-          $DOCKER_HOST = "tcp://${{ env.WSL_IP }}:2375"
-          Write-Output "Waiting for Docker at $DOCKER_HOST to be accessible..."
-          $maxAttempts = ${{ env.MAX_WAIT_ITERATIONS }}
-          $attempt = 0
-          do {
-            $attempt++
-            try {
-              # Force IPv4 by parsing the IP
-              $ip = [System.Net.IPAddress]::Parse('${{ env.WSL_IP }}')
-              $client = New-Object System.Net.Sockets.TcpClient($ip, 2375)
-              $client.Close()
-              Write-Output "Docker TCP port is open! (Attempt $attempt)"
-              break
-            } catch {
-              Write-Output "Attempt $attempt/$maxAttempts failed: $_"
-              Start-Sleep -Seconds 1
-            }
-          } while ($attempt -lt $maxAttempts)
-          if ($attempt -ge $maxAttempts) {
-            Write-Error "Timed out waiting for Docker TCP exposure"
-            exit 1
-          }
-          # Quick test: Query Docker version from Windows
-          $env:DOCKER_HOST = $DOCKER_HOST
-          docker version
-        env:
-          DOCKER_HOST: tcp://${{ env.WSL_IP }}:2375
+          docker --host $docker_host version  # Should show Linux platform
+          docker --host $docker_host pull ubuntu:latest
+          docker --host $docker_host run --rm ubuntu:latest echo "Hello from Linux container"
+          docker --host $docker_host ps
