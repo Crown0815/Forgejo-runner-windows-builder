@@ -43,39 +43,20 @@ jobs:
         shell: pwsh
         run: |
           wsl -u root -- bash -c 'echo -e "[boot]\nsystemd=true" > /etc/wsl.conf'
-          echo "Systemd enabled in /etc/wsl.conf"
-
-      - name: Restart WSL to apply systemd
-        shell: pwsh
-        run: |
           wsl --shutdown
-          wsl -u runner --exec echo "WSL restarted"
 
-      - name: Re-install Docker if needed and add user to group
+      - name: Install Docker and add user to group
         shell: pwsh
         run: |
           wsl -u root -- bash -c 'apt-get update && apt-get install -y docker.io'
           wsl -u root -- bash -c 'usermod -aG docker runner'
-          echo "Docker re-installed and user added to group"
 
       - name: Configure Docker daemon
         shell: pwsh
         run: |
-          wsl -u root -- bash -c 'echo "Update docker.service to listen on TCP"'
           wsl -u root -- bash -c 'sed -i "s|ExecStart=/usr/bin/dockerd|ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375|" /lib/systemd/system/docker.service'
-
-      - name: Restart Docker daemon
-        shell: pwsh
-        run: |
-          wsl -u root -- bash -c 'echo "Restart docker daemon"'
           wsl -u root -- bash -c 'systemctl daemon-reload'
-          wsl -u root -- bash -c 'echo "Restart docker"'
           wsl -u root -- bash -c 'systemctl restart docker'
-
-      - name: Verify daemon is running and exposed
-        shell: pwsh
-        run: |
-          wsl -u runner -- bash -c 'echo "Verify daemon is running and exposed"'
           wsl -u runner -- bash -c 'docker version'
 
       - name: Run Linux Docker containers from Windows host
@@ -88,4 +69,3 @@ jobs:
           docker --host $docker_host version  # Should show Linux platform
           docker --host $docker_host pull ubuntu:latest
           docker --host $docker_host run --rm ubuntu:latest echo "Hello from Linux container"
-          docker --host $docker_host ps
