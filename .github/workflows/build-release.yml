@@ -36,7 +36,6 @@ jobs:
         with:
           distribution: Ubuntu-22.04
           update: true
-          additional-packages: docker.io
           wsl-shell-user: runner
           set-as-default: 'true'
 
@@ -83,23 +82,6 @@ jobs:
         shell: pwsh
         run: |
           $wsl_ip = (wsl hostname -I).Trim().Split(' ')[0]
-          if (-not $wsl_ip) {
-            Write-Error "Failed to get WSL IP!"
-            exit 1
-          }
-          echo "Using WSL IP: $wsl_ip for Docker host"
-          
-          $docker_version_url = "http://{0}:2375/version" -f $wsl_ip
-          echo "Using Docker version URL: $docker_version_url for Docker host"
-
-          # Test raw connection to daemon
-          try {
-            curl.exe -f $docker_version_url | Out-Null
-          } catch {
-            Write-Error "Failed to connect to Docker daemon at $wsl_ip:2375"
-            exit 1
-          }
-          
           $docker_host = "tcp://{0}:2375" -f $wsl_ip
           echo "Using Docker host URL: $docker_host for Docker operations"
 
