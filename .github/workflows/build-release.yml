@@ -57,7 +57,7 @@ jobs:
           wsl -u root -- bash -c 'sed -i "s|ExecStart=/usr/bin/dockerd|ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375|" /lib/systemd/system/docker.service'
           wsl -u root -- bash -c 'systemctl daemon-reload'
           wsl -u root -- bash -c 'systemctl restart docker'
-          wsl -u runner -- bash -c 'docker version'
+          wsl -u runner -- bash -c 'docker info'
 
       - name: Run Linux Docker containers from Windows host
         shell: pwsh
