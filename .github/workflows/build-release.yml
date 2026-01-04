@@ -59,12 +59,16 @@ jobs:
           wsl -u runner -- bash -c 'docker info'
 
       - name: Run Linux Docker containers from Windows host
-        shell: pwsh
-        run: |
-          $wsl_ip = wsl -- ip addr show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1
-          $docker_host = "tcp://{0}:2375" -f $wsl_ip
-          echo "Using Docker host URL: $docker_host for Docker operations"
-
-          docker --host $docker_host version
-          docker --host $docker_host pull ubuntu:latest
-          docker --host $docker_host run --rm ubuntu:latest echo "Hello from Linux container"
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 5
+          shell: pwsh
+          command: |
+            $wsl_ip = wsl -- ip addr show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1
+            $docker_host = "tcp://{0}:2375" -f $wsl_ip
+            echo "Using Docker host URL: $docker_host for Docker operations"
+  
+            docker --host $docker_host version
+            docker --host $docker_host pull ubuntu:latest
+            docker --host $docker_host run --rm ubuntu:latest echo "Hello from Linux container"
