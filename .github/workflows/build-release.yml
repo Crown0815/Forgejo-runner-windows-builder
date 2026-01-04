@@ -27,8 +27,11 @@ on:
 jobs:
 
   test-docker:
-    name: Test docker running on Windows
+    name: Test docker running on Windows (${{ matrix.counter }})
     runs-on: windows-latest
+    strategy:
+      matrix:
+        counter: [1, 2, 3, 4, 5]
     steps:
 
       - name: Windows - Setup Windows Subsystem for Linux (WSL)
@@ -61,7 +64,19 @@ jobs:
           $wsl_ip = wsl -- ip addr show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1
           $docker_host = "tcp://{0}:2375" -f $wsl_ip
           echo "Using Docker host URL: $docker_host for Docker operations"
+          
+          $retry = 0
+          do {
+            try { 
+              docker --host $docker_host version
+              break 
+            } catch 
+            {
+              echo "Docker connection failed (attempt $(++$retry)). Retrying in 5s..."
+              Start-Sleep 5
+            }
+          } until ($retry -ge 5)
+          if ($retry -ge 5) { throw "Failed to connect to Docker after 5 attempts." }
 
-          docker --host $docker_host version  # Should show Linux platform
           docker --host $docker_host pull ubuntu:latest
           docker --host $docker_host run --rm ubuntu:latest echo "Hello from Linux container"
