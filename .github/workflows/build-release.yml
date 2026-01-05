@@ -37,7 +37,7 @@ jobs:
       - name: Windows - Setup Windows Subsystem for Linux (WSL)
         uses: Vampire/setup-wsl@v6
         with:
-          distribution: Ubuntu-22.04
+          distribution: Debian
           update: true
           additional-packages: docker.io
           wsl-shell-user: runner
