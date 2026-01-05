@@ -71,9 +71,9 @@ jobs:
           max_attempts: 5
           shell: pwsh
           command: |
-            $docker_host = "tcp://localhost:2375"
-            echo "Using Docker host URL: $docker_host for Docker operations"
+            docker context create wsl --docker "host=tcp://localhost:2375"
+            docker context use wsl
   
-            docker --host $docker_host version
-            docker --host $docker_host pull ubuntu:latest
-            docker --host $docker_host run --rm ubuntu:latest echo "Hello from Linux container"
+            docker version
+            docker pull ubuntu:latest
+            docker run --rm ubuntu:latest echo "Hello from Linux container"
