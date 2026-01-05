@@ -70,8 +70,7 @@ jobs:
           max_attempts: 5
           shell: pwsh
           command: |
-            $wsl_ip = wsl -- ip addr show eth0 | grep inet | awk '{print $2}' | cut -d/ -f1
-            $docker_host = "tcp://{0}:2375" -f $wsl_ip
+            $docker_host = "tcp://localhost:2375"
             echo "Using Docker host URL: $docker_host for Docker operations"
   
             docker --host $docker_host version
