@@ -37,11 +37,16 @@ jobs:
       - name: Windows - Setup Windows Subsystem for Linux (WSL)
         uses: Vampire/setup-wsl@v6
         with:
-          distribution: Debian
+          distribution: Ubuntu-24.04
           update: true
-          additional-packages: docker.io
           wsl-shell-user: runner
           set-as-default: 'true'
+
+      - name: Install Docker
+        shell: pwsh
+        run: |
+          wsl -u root -- bash -c 'curl -fsSL https://get.docker.com -o get-docker.sh'
+          wsl -u root -- bash -c 'bash ./get-docker.sh'
 
       - name: Enable systemd in WSL and register Docker user
         shell: pwsh
