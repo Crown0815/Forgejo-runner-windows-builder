@@ -196,13 +196,23 @@ jobs:
           go-version-file: go.mod
 
       - name: Windows - Install dependencies
-        run: go mod download
+        run: |-
+          go mod download
+          go install gotest.tools/gotestsum@v1.13.0
 
       - name: Windows - Run tests
-        run: go test -v ./act/...
+        run: gotestsum --junitfile test-results.xml --format pkgname -- ./act/...
         env:
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
           DOCKER_HOST: npipe:////./pipe/podman-machine-default
+
+      - name: Report test results
+        uses: dorny/test-reporter@v2.6.0
+        if: ${{ !cancelled() }}
+        with:
+          name: Act Tests
+          path: test-results.xml
+          reporter: java-junit
 
   release:
     runs-on: ubuntu-latest
