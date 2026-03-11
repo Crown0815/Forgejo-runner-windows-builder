@@ -37,7 +37,7 @@ jobs:
           - architecture: arm64
             os: windows-11-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           github-server-url: https://code.forgejo.org
           repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
@@ -60,7 +60,7 @@ jobs:
             exit 1
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: forgejo-runner-windows-${{ matrix.architecture }}
           path: forgejo-runner-windows-${{ matrix.architecture }}.exe
@@ -78,7 +78,7 @@ jobs:
 
     steps:
       - name: Windows - Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           github-server-url: https://code.forgejo.org
           repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
@@ -166,7 +166,7 @@ jobs:
 
     steps:
       - name: Windows - Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           github-server-url: https://code.forgejo.org
           repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
@@ -221,7 +221,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: .
 
