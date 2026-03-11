@@ -146,7 +146,7 @@ jobs:
           go run main.go create-runner-file --config temporaryConfig.yml --instance ${{ env.FORGEJO_ROOT_URL }} --secret ${{ env.FORGEJO_RUNNER_SECRET }} --name "windows-test-runner"
 
       - name: Windows - Run tests
-        run: gotestsum --junitfile test-results.xml --format pkgname -- ./internal/...
+        run: gotestsum --jsonfile test-results.json --format pkgname -- ./internal/...
         env:
           FORGEJO_URL: ${{ env.FORGEJO_ROOT_URL }}
           FORGEJO_RUNNER_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
@@ -157,8 +157,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: Runner Tests
-          path: test-results.xml
-          reporter: java-junit
+          path: test-results.json
+          reporter: golang-json
 
   test-act:
     name: Run Act Tests on Windows
@@ -201,7 +201,7 @@ jobs:
           go install gotest.tools/gotestsum@v1.13.0
 
       - name: Windows - Run tests
-        run: gotestsum --junitfile test-results.xml --format pkgname -- ./act/...
+        run: gotestsum --jsonfile test-results.json --format pkgname -- ./act/...
         env:
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
           DOCKER_HOST: npipe:////./pipe/podman-machine-default
@@ -211,8 +211,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: Act Tests
-          path: test-results.xml
-          reporter: java-junit
+          path: test-results.json
+          reporter: golang-json
 
   release:
     runs-on: ubuntu-latest
