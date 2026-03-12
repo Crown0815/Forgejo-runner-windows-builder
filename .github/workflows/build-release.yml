@@ -114,7 +114,7 @@ jobs:
             codeberg.org/forgejo/forgejo:11.0-rootless
 
       - name: Windows - Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -191,7 +191,7 @@ jobs:
           podman machine start
 
       - name: Windows - Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
