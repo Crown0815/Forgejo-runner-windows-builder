@@ -37,7 +37,7 @@ jobs:
           - architecture: arm64
             os: windows-11-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           github-server-url: https://code.forgejo.org
           repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
@@ -60,7 +60,7 @@ jobs:
             exit 1
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: forgejo-runner-windows-${{ matrix.architecture }}
           path: forgejo-runner-windows-${{ matrix.architecture }}.exe
@@ -74,72 +74,59 @@ jobs:
       FORGEJO_ADMIN_PASSWORD: 'admin_password'
       FORGEJO_RUNNER_SECRET: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
       MAX_WAIT_ITERATIONS: 30
+      DOCKER_HOST: npipe:////./pipe/podman-machine-default
 
     steps:
       - name: Windows - Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           github-server-url: https://code.forgejo.org
           repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
-      - name: Windows - Setup Windows Subsystem for Linux (WSL)
-        uses: Vampire/setup-wsl@v6
-        with:
-          distribution: Alpine
-          wsl-shell-user: root
-          additional-packages: bash
-
-      - name: WSL - Install Docker
-        shell: wsl-bash {0}
+      - name: Install OCI-Container Runtime
         run: |
-          apk --update add --no-cache docker curl
+          winget install --exact `
+            --id RedHat.Podman `
+            --version "5.7.1" `
+            --source winget `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --silent
+          "C:\Program Files\RedHat\Podman" >> $env:GITHUB_PATH
 
-          rc-update add docker default
-          openrc default
-
-          # Wait for Docker to be ready
-          i=0
-          until docker info > /dev/null 2>&1 || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
-            echo "Waiting for Docker to be ready... ($(( ++i ))/${{ env.MAX_WAIT_ITERATIONS }})"
-            sleep 1
-          done
-          [ $i -lt ${{ env.MAX_WAIT_ITERATIONS }} ] && echo "Docker is ready!" || { echo "Timed out waiting for Docker" ; exit 1; }
+      - name: Create Linux-Container machine
+        run: |
+          podman machine init
+          podman machine set --rootful
+          podman machine start
 
       - name: WSL - Start Forgejo Server
-        shell: wsl-bash {0}
         run: |
-          docker run -d --name forgejo \
-            -p 3000:3000 \
-            -e USER_UID=1000 \
-            -e USER_GID=1000 \
-            -e FORGEJO__security__INSTALL_LOCK=true \
-            -e FORGEJO__server__DOMAIN=localhost \
-            -e FORGEJO__server__ROOT_URL=${{ env.FORGEJO_ROOT_URL }} \
+          docker run -d --name forgejo `
+            -p 3000:3000 `
+            -e USER_UID=1000 `
+            -e USER_GID=1000 `
+            -e FORGEJO__security__INSTALL_LOCK=true `
+            -e FORGEJO__server__DOMAIN=localhost `
+            -e FORGEJO__server__ROOT_URL=${{ env.FORGEJO_ROOT_URL }} `
             codeberg.org/forgejo/forgejo:11.0-rootless
 
       - name: Windows - Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Windows - Install dependencies
-        run: go mod download
+        run: |-
+          go mod download
+          go install gotest.tools/gotestsum@v1.13.0
 
       - name: WSL - Register Runner on Forgejo Server
         # Starting the Forgejo server takes some time.
         # That time used to install go.
-        shell: wsl-bash {0}
         run: |
-          i=0
-          until curl -s ${{ env.FORGEJO_ROOT_URL }}/api/v1/version > /dev/null || (( i == ${{ env.MAX_WAIT_ITERATIONS }} )); do
-            echo "Waiting for Forgejo to be ready... ($(( ++i ))/${{ env.MAX_WAIT_ITERATIONS }})"
-            sleep 1
-          done
-          [ $i -lt ${{ env.MAX_WAIT_ITERATIONS }} ] && echo "Forgejo is ready!" || { echo "Timed out waiting for Forgejo" ; exit 1; }
-
-          # Create admin user and generate runner token
           docker exec forgejo forgejo admin user create --admin --username ${{ env.FORGEJO_ADMIN_USER }} --password ${{ env.FORGEJO_ADMIN_PASSWORD }} --email root@example.com
           docker exec forgejo forgejo forgejo-cli actions register --labels docker --name therunner --secret ${{ env.FORGEJO_RUNNER_SECRET }}
 
@@ -159,11 +146,19 @@ jobs:
           go run main.go create-runner-file --config temporaryConfig.yml --instance ${{ env.FORGEJO_ROOT_URL }} --secret ${{ env.FORGEJO_RUNNER_SECRET }} --name "windows-test-runner"
 
       - name: Windows - Run tests
-        run: go test -v ./internal/...
+        run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./internal/...
         env:
           FORGEJO_URL: ${{ env.FORGEJO_ROOT_URL }}
           FORGEJO_RUNNER_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
           FORGEJO_RUNNER_HEX_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
+
+      - name: Report test results
+        uses: dorny/test-reporter@v2.6.0
+        if: ${{ !cancelled() }}
+        with:
+          name: Runner Tests
+          path: test-results.json
+          reporter: golang-json
 
   test-act:
     name: Run Act Tests on Windows
@@ -171,25 +166,53 @@ jobs:
 
     steps:
       - name: Windows - Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           github-server-url: https://code.forgejo.org
           repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
+      - name: Install OCI-Container Runtime
+        run: |
+          winget install --exact `
+            --id RedHat.Podman `
+            --version "5.7.1" `
+            --source winget `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --silent
+          "C:\Program Files\RedHat\Podman" >> $env:GITHUB_PATH
+
+      - name: Create Linux-Container machine
+        run: |
+          podman machine init
+          podman machine set --rootful
+          podman machine start
+
       - name: Windows - Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Windows - Install dependencies
-        run: go mod download
+        run: |-
+          go mod download
+          go install gotest.tools/gotestsum@v1.13.0
 
       - name: Windows - Run tests
-        run: go test -v ./act/...
+        run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./act/...
         env:
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
+          DOCKER_HOST: npipe:////./pipe/podman-machine-default
+
+      - name: Report test results
+        uses: dorny/test-reporter@v2.6.0
+        if: ${{ !cancelled() }}
+        with:
+          name: Act Tests
+          path: test-results.json
+          reporter: golang-json
 
   release:
     runs-on: ubuntu-latest
@@ -198,7 +221,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: .
 
