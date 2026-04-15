@@ -88,7 +88,7 @@ jobs:
       - name: Install OCI-Container Runtime
         run: |
           winget install --exact `
-            --id RedHat.Podman `
+            --id Podman.CLI `
             --version "5.7.1" `
             --source winget `
             --accept-package-agreements `
@@ -176,7 +176,7 @@ jobs:
       - name: Install OCI-Container Runtime
         run: |
           winget install --exact `
-            --id RedHat.Podman `
+            --id Podman.CLI `
             --version "5.7.1" `
             --source winget `
             --accept-package-agreements `
