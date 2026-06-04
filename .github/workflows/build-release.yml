@@ -89,7 +89,6 @@ jobs:
         run: |
           winget install --exact `
             --id Podman.CLI `
-            --version "5.7.1" `
             --source winget `
             --accept-package-agreements `
             --accept-source-agreements `
@@ -177,7 +176,6 @@ jobs:
         run: |
           winget install --exact `
             --id Podman.CLI `
-            --version "5.7.1" `
             --source winget `
             --accept-package-agreements `
             --accept-source-agreements `
