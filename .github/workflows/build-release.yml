@@ -85,21 +85,8 @@ jobs:
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
-      - name: Install OCI-Container Runtime
-        run: |
-          winget install --exact `
-            --id Podman.CLI `
-            --source winget `
-            --accept-package-agreements `
-            --accept-source-agreements `
-            --silent
-          "C:\Program Files\RedHat\Podman" >> $env:GITHUB_PATH
-
-      - name: Create Linux-Container machine
-        run: |
-          podman machine init
-          podman machine set --rootful
-          podman machine start
+      - name: Install Podman
+        uses: redhat-actions/podman-install@main
 
       - name: WSL - Start Forgejo Server
         run: |
@@ -172,21 +159,8 @@ jobs:
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
-      - name: Install OCI-Container Runtime
-        run: |
-          winget install --exact `
-            --id Podman.CLI `
-            --source winget `
-            --accept-package-agreements `
-            --accept-source-agreements `
-            --silent
-          "C:\Program Files\RedHat\Podman" >> $env:GITHUB_PATH
-
-      - name: Create Linux-Container machine
-        run: |
-          podman machine init
-          podman machine set --rootful
-          podman machine start
+      - name: Install Podman
+        uses: redhat-actions/podman-install@main
 
       - name: Windows - Set up Go
         uses: actions/setup-go@v6
