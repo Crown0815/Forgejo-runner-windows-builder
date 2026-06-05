@@ -88,11 +88,6 @@ jobs:
       - name: Install Podman
         uses: redhat-actions/podman-install@main
 
-      - name: Create Linux-Container machine
-        run: |
-          podman machine set --rootful
-          podman machine start
-
       - name: WSL - Start Forgejo Server
         run: |
           docker run -d --name forgejo `
@@ -166,11 +161,6 @@ jobs:
 
       - name: Install Podman
         uses: redhat-actions/podman-install@main
-
-      - name: Create Linux-Container machine
-        run: |
-          podman machine set --rootful
-          podman machine start
 
       - name: Windows - Set up Go
         uses: actions/setup-go@v6
