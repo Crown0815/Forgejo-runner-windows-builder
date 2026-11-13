@@ -45,7 +45,7 @@ It is a build of the official [Forgejo Runner source code](https://code.forgejo.
 ## Installation and Usage
 
 1. **Download the Binary**:
-    - Visit the [Releases page](https://github.com/Crown0815/Forgejo-runner-windows-builder/releases) to download the latest Windows executable (e.g., `forgejo-runner.exe`).
+    - Visit the [Releases page](https://github.com/Crown0815/Forgejo-runner-windows-builder/releases) to download the latest Windows executable for your architecture (e.g., `forgejo-runner-windows-amd64.exe`).
 
 2. **Configure the Runner**:
     - Follow the [official documentation](https://forgejo.org/docs/latest/admin/actions/runner-installation/) for runner configuration.

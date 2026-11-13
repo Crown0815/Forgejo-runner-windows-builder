@@ -28,6 +28,7 @@ jobs:
     name: Build ${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - architecture: '386'
@@ -46,10 +47,18 @@ jobs:
 
       - name: Build for ${{ matrix.architecture }}
         run: |
+          # The module path contains the major version (e.g. .../runner/v13), so read it from go.mod
+          # instead of hardcoding it. Otherwise the version is not injected for other major versions.
+          $MODULE_PATH = (Select-String -Path go.mod -Pattern '^module\s+(\S+)').Matches[0].Groups[1].Value
+          if (-not $MODULE_PATH) {
+            Write-Output "Could not determine module path from go.mod"
+            exit 1
+          }
+          Write-Output "Module path: $MODULE_PATH"
           $env:GOOS = 'windows'
           $env:GOARCH = '${{ matrix.architecture }}'
           go build `
-            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/v12/internal/pkg/ver.version=${{ inputs.tag }}" `
+            -ldflags "-s -w -X $MODULE_PATH/internal/pkg/ver.version=${{ inputs.tag }}" `
             -o forgejo-runner-windows-${{ matrix.architecture }}.exe
 
       - name: Check Version Output
@@ -113,6 +122,22 @@ jobs:
         # Starting the Forgejo server takes some time.
         # That time used to install go.
         run: |
+          $ready = $false
+          for ($i = 1; $i -le ${{ env.MAX_WAIT_ITERATIONS }}; $i++) {
+            try {
+              Invoke-WebRequest -Uri '${{ env.FORGEJO_ROOT_URL }}api/v1/version' -UseBasicParsing -TimeoutSec 5 | Out-Null
+              $ready = $true
+              break
+            } catch {
+              Write-Output "Waiting for Forgejo server ($i/${{ env.MAX_WAIT_ITERATIONS }})..."
+              Start-Sleep -Seconds 2
+            }
+          }
+          if (-not $ready) {
+            Write-Output "Forgejo server did not become ready in time"
+            docker logs forgejo
+            exit 1
+          }
           docker exec forgejo forgejo admin user create --admin --username ${{ env.FORGEJO_ADMIN_USER }} --password ${{ env.FORGEJO_ADMIN_PASSWORD }} --email root@example.com
           docker exec forgejo forgejo forgejo-cli actions register --labels docker --name therunner --secret ${{ env.FORGEJO_RUNNER_SECRET }}
 
@@ -139,7 +164,7 @@ jobs:
           FORGEJO_RUNNER_HEX_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
 
       - name: Report test results
-        uses: dorny/test-reporter@v2.6.0
+        uses: dorny/test-reporter@v3.0.0
         if: ${{ !cancelled() }}
         with:
           name: Runner Tests
@@ -179,7 +204,7 @@ jobs:
           DOCKER_HOST: npipe:////./pipe/podman-machine-default
 
       - name: Report test results
-        uses: dorny/test-reporter@v2.6.0
+        uses: dorny/test-reporter@v3.0.0
         if: ${{ !cancelled() }}
         with:
           name: Act Tests
@@ -203,7 +228,7 @@ jobs:
           tag_name: ${{ inputs.tag }}
           files: forgejo-runner-windows-*/forgejo-runner-windows-*.exe
           draft: ${{ needs.test-runner.result != 'success' || needs.test-act.result != 'success' || inputs.goal != 'release' }}
-          prerelease: ${{ contains(inputs.tag, 'beta') || contains(inputs.tag, 'alpha') }}
+          prerelease: ${{ contains(inputs.tag, 'beta') || contains(inputs.tag, 'alpha') || contains(inputs.tag, 'rc') }}
           fail_on_unmatched_files: true
           body: |
             See [original release notes](https://code.forgejo.org/forgejo/runner/releases/tag/${{ inputs.tag }}).
