@@ -1,0 +1,38 @@
+diff --git a/act/container/docker/cli_test.go b/act/container/docker/cli_test.go
+index 2b69e91c..4d794fac 100644
+--- a/act/container/docker/cli_test.go
++++ b/act/container/docker/cli_test.go
+@@ -90,6 +90,15 @@ func mustParse(t *testing.T, args string) (*container.Config, *container.HostCon
+ 	return config, hostConfig, nwConfig
+ }
+ 
++// nonUserDefinedNetwork returns a built-in network that is not user-defined on the current platform.
++// On Windows "bridge" and "host" are user-defined networks; the default bridge network is called "nat".
++func nonUserDefinedNetwork(linux string) string {
++	if runtime.GOOS == "windows" {
++		return "nat"
++	}
++	return linux
++}
++
+ func TestParseRunLinks(t *testing.T) {
+ 	tests := []struct {
+ 		name               string
+@@ -112,7 +121,7 @@ func TestParseRunLinks(t *testing.T) {
+ 		},
+ 		{
+ 			name:               "bridge/onelink",
+-			input:              "--network bridge --link a:b",
++			input:              "--network " + nonUserDefinedNetwork("bridge") + " --link a:b",
+ 			expHostConfigLinks: []string{"a:b"},
+ 			// expNetConfigLinks - no EndpointsConfig is created for a single named network with no options set.
+ 			// See the "For backward compatibility" comment in parseNetworkOpts().
+@@ -735,7 +744,7 @@ func TestParseNetworkConfig(t *testing.T) {
+ 		},
+ 		{
+ 			name:        "invalid-mixed-network-types",
+-			flags:       []string{"--network", "name=host", "--network", "net1"},
++			flags:       []string{"--network", "name=" + nonUserDefinedNetwork("host"), "--network", "net1"},
+ 			expectedErr: `conflicting options: cannot attach both user-defined and non-user-defined network-modes`,
+ 		},
+ 		{

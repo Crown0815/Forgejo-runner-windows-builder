@@ -1,0 +1,80 @@
+# Temporary: experiments for v13 Windows act test failures. Removed before merge.
+name: v13 act experiments
+on:
+  push:
+    branches: [ci/v13-act-fixes]
+    paths: ['.github/workflows/v13-act-experiments.yml', '.github/experiments/**']
+
+jobs:
+  clone:
+    name: TestClone ${{ matrix.variant }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, temp-runner-temp, temp-long-name, system-longpaths]
+    steps:
+      - uses: actions/checkout@v6
+        with: { path: builder }
+      - uses: actions/checkout@v6
+        with:
+          github-server-url: https://code.forgejo.org
+          repository: forgejo/runner
+          ref: v13.2.2
+          path: runner
+      - uses: actions/setup-go@v6
+        with: { go-version-file: runner/go.mod, cache-dependency-path: runner/go.sum }
+      - name: Configure variant
+        run: |
+          git --version
+          git config --show-origin --get-all core.longpaths
+          Write-Output "TEMP before: $env:TEMP"
+          switch ('${{ matrix.variant }}') {
+            'temp-runner-temp' { "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV; "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV }
+            'temp-long-name'   { $long = "C:\Users\$env:USERNAME\AppData\Local\Temp"; Write-Output "long: $long"; "TEMP=$long" >> $env:GITHUB_ENV; "TMP=$long" >> $env:GITHUB_ENV }
+            'system-longpaths' { git config --system core.longpaths true }
+          }
+          git config --show-origin --get-all core.longpaths
+          $global:LASTEXITCODE = 0
+      - name: Run TestClone
+        working-directory: runner
+        run: |
+          Write-Output "TEMP now: $env:TEMP"
+          go test ./act/common/git -run '^TestClone$' -v -args -features "-" 2>&1 | Select-String -Pattern '^(=== RUN|--- |ok|FAIL|\s+--- )|gitfile|Error' | Select-Object -First 200
+          go test ./act/common/git -run '^TestClone$' -args -features "-"
+          exit $LASTEXITCODE
+      - name: Trace one failing case
+        if: failure() && matrix.variant == 'baseline'
+        working-directory: runner
+        env: { GIT_TRACE: '1' }
+        run: go test ./act/common/git -run '^TestClone$/^Offline_mode_tag/branch/sha_works_after_cloning$/^tag$' -v -args -features "-" 2>&1 | Select-Object -Last 80
+
+  network:
+    name: Network tests ${{ matrix.variant }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, upstream-patch, skip-regex]
+    steps:
+      - uses: actions/checkout@v6
+        with: { path: builder }
+      - uses: actions/checkout@v6
+        with:
+          github-server-url: https://code.forgejo.org
+          repository: forgejo/runner
+          ref: v13.2.2
+          path: runner
+      - uses: actions/setup-go@v6
+        with: { go-version-file: runner/go.mod, cache-dependency-path: runner/go.sum }
+      - name: Apply upstream patch
+        if: matrix.variant == 'upstream-patch'
+        working-directory: runner
+        run: git apply --verbose ../builder/.github/experiments/upstream-network-tests.patch
+      - name: Run network tests
+        working-directory: runner
+        run: |
+          $skip = if ('${{ matrix.variant }}' -eq 'skip-regex') { '^TestParseRunLinks$/^bridge$/^onelink$|^TestParseNetworkConfig$/^invalid-mixed-network-types$' } else { '^$' }
+          go test ./act/container/docker -run '^(TestParseRunLinks|TestParseNetworkConfig)$' -skip $skip -v -args -features "-" 2>&1 | Select-String -Pattern 'bridge|invalid-mixed|^ok|FAIL'
+          go test ./act/container/docker -run '^(TestParseRunLinks|TestParseNetworkConfig)$' -skip $skip -args -features "-"
+          exit $LASTEXITCODE
