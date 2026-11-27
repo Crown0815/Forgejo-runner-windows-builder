@@ -96,6 +96,17 @@ jobs:
 
       - name: Install Podman
         uses: redhat-actions/podman-install@main
+        # Its `podman machine init --now` can fail with "already running"; the next step checks the machine instead.
+        continue-on-error: true
+
+      - name: Ensure Podman machine is running
+        run: |
+          podman machine inspect podman-machine-default *> $null
+          if ($LASTEXITCODE -ne 0) { podman machine init }
+          $state = podman machine inspect podman-machine-default --format '{{.State}}'
+          if ($state -ne 'running') { podman machine start }
+          podman machine list
+          podman info --format 'Podman server {{.Version.Version}} on {{.Host.OS}}/{{.Host.Arch}}'
 
       - name: WSL - Start Forgejo Server
         run: |
@@ -170,6 +181,17 @@ jobs:
 
       - name: Install Podman
         uses: redhat-actions/podman-install@main
+        # Its `podman machine init --now` can fail with "already running"; the next step checks the machine instead.
+        continue-on-error: true
+
+      - name: Ensure Podman machine is running
+        run: |
+          podman machine inspect podman-machine-default *> $null
+          if ($LASTEXITCODE -ne 0) { podman machine init }
+          $state = podman machine inspect podman-machine-default --format '{{.State}}'
+          if ($state -ne 'running') { podman machine start }
+          podman machine list
+          podman info --format 'Podman server {{.Version.Version}} on {{.Host.OS}}/{{.Host.Arch}}'
 
       - name: Windows - Set up Go
         uses: actions/setup-go@v6
