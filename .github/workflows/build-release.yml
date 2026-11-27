@@ -20,6 +20,7 @@ on:
         options:
           - release
           - draft
+          - test
           - test-fork
         default: release
 
@@ -28,6 +29,7 @@ jobs:
     name: Build ${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - architecture: '386'
@@ -44,12 +46,19 @@ jobs:
           ref: ${{ inputs.tag }}
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
       - name: Build for ${{ matrix.architecture }}
         run: |
           $env:GOOS = 'windows'
           $env:GOARCH = '${{ matrix.architecture }}'
+          # The Go module path carries the major version (e.g. .../runner/v13), derive it from the tag
+          $major = ('${{ inputs.tag }}' -replace '^v', '').Split('.')[0]
           go build `
-            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/v12/internal/pkg/ver.version=${{ inputs.tag }}" `
+            -ldflags "-s -w -X code.forgejo.org/forgejo/runner/v$major/internal/pkg/ver.version=${{ inputs.tag }}" `
             -o forgejo-runner-windows-${{ matrix.architecture }}.exe
 
       - name: Check Version Output
@@ -189,7 +198,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: [build, test-runner, test-act]
-    if: ${{ always() && needs.build.result == 'success' && inputs.goal != 'test-fork' }}
+    if: ${{ always() && needs.build.result == 'success' && inputs.goal != 'test-fork' && inputs.goal != 'test' }}
     permissions:
       contents: write
     steps:
