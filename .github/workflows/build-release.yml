@@ -23,6 +23,17 @@ on:
           - test
           - test-fork
         default: release
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        type: string
+        required: true
+      goal:
+        description: 'Goal of run'
+        type: string
+        required: false
+        default: release
 
 jobs:
   build:
