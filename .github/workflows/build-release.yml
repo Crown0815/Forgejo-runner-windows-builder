@@ -62,6 +62,7 @@ jobs:
             -o forgejo-runner-windows-${{ matrix.architecture }}.exe
 
       - name: Check Version Output
+        if: inputs.goal != 'test-fork'
         run: |
           $VERSION_OUTPUT = & .\forgejo-runner-windows-${{ matrix.architecture }}.exe --version
           if ($VERSION_OUTPUT -ne 'forgejo-runner version ${{ inputs.tag }}') {
