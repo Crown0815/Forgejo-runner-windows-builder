@@ -95,11 +95,9 @@ jobs:
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
       - name: Install Podman
-        # Podman 6.2.1 (default "latest" in podman-install v1.1.3) intermittently fails
-        # `podman machine init --now` with "already running"; pin 6.1.3.
         uses: redhat-actions/podman-install@v1.1.3
         with:
-          podman-version-input: 'v6.1.3'
+          podman-version-input: 'v6.1.3' # 6.2.1: machine init --now fails with "already running"
 
       - name: WSL - Start Forgejo Server
         run: |
