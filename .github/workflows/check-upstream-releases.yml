@@ -1,0 +1,46 @@
+name: Check Upstream Releases
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # 2 a.m. Europe/Berlin
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tags: ${{ steps.detect.outputs.tags }}
+    steps:
+      - id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(gh release list --json tagName --limit 100 --jq '.[].tagName' | sort -V | tail -n1)
+          tags=$(
+            curl -fsSL 'https://code.forgejo.org/api/v1/repos/forgejo/runner/releases?limit=50' \
+              | jq -r '.[] | select(.prerelease == false) | .tag_name' \
+              | sort -V \
+              | awk -v latest="$latest" '$0 == latest { seen = 1; next } seen { print }' \
+              | jq -R -s -c 'split("\n") | map(select(length > 0))'
+          )
+          echo "tags=$tags" >>"$GITHUB_OUTPUT"
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.tags != '[]'
+    permissions:
+      contents: write
+      actions: write
+      checks: write
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(needs.detect.outputs.tags) }}
+    uses: ./.github/workflows/build-release.yml
+    with:
+      tag: ${{ matrix.tag }}
+      goal: release
+    secrets: inherit
