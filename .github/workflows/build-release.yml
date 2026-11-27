@@ -95,7 +95,9 @@ jobs:
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
       - name: Install Podman
-        uses: redhat-actions/podman-install@main
+        uses: redhat-actions/podman-install@v1.1.3
+        with:
+          podman-version-input: 'v6.1.3' # 6.2.1: machine init --now fails with "already running"
 
       - name: WSL - Start Forgejo Server
         run: |
@@ -169,7 +171,9 @@ jobs:
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
       - name: Install Podman
-        uses: redhat-actions/podman-install@main
+        uses: redhat-actions/podman-install@v1.1.3
+        with:
+          podman-version-input: 'v6.1.3'
 
       - name: Windows - Set up Go
         uses: actions/setup-go@v6
