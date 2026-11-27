@@ -1,0 +1,15 @@
+diff --git a/act/common/git/git_test.go b/act/common/git/git_test.go
+index 153d9038..3e1a77b0 100644
+--- a/act/common/git/git_test.go
++++ b/act/common/git/git_test.go
+@@ -787,7 +787,9 @@ func TestClone(t *testing.T) {
+ 		assert.Error(t, err)
+ 	})
+ 
+-	t.Run("Offline mode tag/branch/sha works after cloning", func(t *testing.T) {
++	// Keep this name short: t.TempDir() embeds it in the cache path, and on Windows the worktree's
++	// `.git/worktrees/<name>/commondir` path otherwise reaches MAX_PATH (260), which git cannot read.
++	t.Run("Offline mode works", func(t *testing.T) {
+ 		remoteDir := makeTestRepo(t)
+ 		fullSHA := makeTestCommit(t, remoteDir, "initial commit")
+ 		makeTestTag(t, remoteDir, fullSHA, "tag-1")

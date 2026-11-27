@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, temp-runner-temp, temp-long-name, system-longpaths]
+        variant: [baseline, temp-runner-temp, temp-long-name, system-longpaths, upstream-patch]
     steps:
       - uses: actions/checkout@v6
         with: { path: builder }
@@ -37,6 +37,10 @@ jobs:
           }
           git config --show-origin --get-all core.longpaths
           $global:LASTEXITCODE = 0
+      - name: Apply upstream patch
+        if: matrix.variant == 'upstream-patch'
+        working-directory: runner
+        run: git apply --verbose --ignore-whitespace ../builder/.github/experiments/upstream-testclone.patch
       - name: Run TestClone
         working-directory: runner
         run: |
@@ -72,7 +76,7 @@ jobs:
       - name: Apply upstream patch
         if: matrix.variant == 'upstream-patch'
         working-directory: runner
-        run: git apply --verbose ../builder/.github/experiments/upstream-network-tests.patch
+        run: git apply --verbose --ignore-whitespace ../builder/.github/experiments/upstream-network-tests.patch
       - name: Run network tests
         working-directory: runner
         run: |

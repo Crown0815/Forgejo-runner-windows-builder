@@ -182,8 +182,14 @@ jobs:
           go install gotest.tools/gotestsum@v1.13.0
 
       - name: Windows - Run tests
-        run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./act/... -args -features "-"
+        # TEMP/TMP: v13.2+ TestClone puts git worktrees under TEMP; the default TEMP pushes their paths past MAX_PATH (260).
+        # -skip: these upstream tests assume Linux network modes ("bridge" and "host" are user-defined networks on Windows).
+        run: |
+          $skip = '^TestParseRunLinks$/^bridge$/^onelink$|^TestParseNetworkConfig$/^invalid-mixed-network-types$'
+          gotestsum --jsonfile test-results.json --format pkgname -- -v ./act/... -skip $skip -args -features "-"
         env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
           DOCKER_HOST: npipe:////./pipe/podman-machine-default
 
