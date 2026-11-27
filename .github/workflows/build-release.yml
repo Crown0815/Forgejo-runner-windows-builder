@@ -95,8 +95,8 @@ jobs:
           token: ${{ secrets.CODE_FORGEJO_TOKEN }}
 
       - name: Install Podman
-        # v1.1.3 has the bug: it installs the latest Podman by default, and Podman 6.2.1 intermittently
-        # fails `podman machine init --now` with "already running". Hence Podman is pinned to v6.1.3.
+        # Podman 6.2.1 (default "latest" in podman-install v1.1.3) intermittently fails
+        # `podman machine init --now` with "already running"; pin 6.1.3.
         uses: redhat-actions/podman-install@v1.1.3
         with:
           podman-version-input: 'v6.1.3'
