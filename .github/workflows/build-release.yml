@@ -146,6 +146,8 @@ jobs:
       - name: Windows - Run tests
         run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./internal/... -args -features "-"
         env:
+          TEMP: ${{ runner.temp }}  # Short temp root keeps test paths below the Windows MAX_PATH limit
+          TMP: ${{ runner.temp }}
           FORGEJO_URL: ${{ env.FORGEJO_ROOT_URL }}
           FORGEJO_RUNNER_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
           FORGEJO_RUNNER_HEX_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
@@ -189,6 +191,8 @@ jobs:
       - name: Windows - Run tests
         run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./act/... -args -features "-"
         env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
           ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
           DOCKER_HOST: npipe:////./pipe/podman-machine-default
 
