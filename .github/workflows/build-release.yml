@@ -96,17 +96,8 @@ jobs:
 
       - name: Install Podman
         uses: redhat-actions/podman-install@9dae63d3196a33b7e35516387f5adb6a409bdff3 # v1.1.3
-        # Its `podman machine init --now` can fail with "already running"; the next step checks the machine instead.
-        continue-on-error: true
-
-      - name: Ensure Podman machine is running
-        run: |
-          podman machine inspect podman-machine-default *> $null
-          if ($LASTEXITCODE -ne 0) { podman machine init }
-          $state = podman machine inspect podman-machine-default --format '{{.State}}'
-          if ($state -ne 'running') { podman machine start }
-          podman machine list
-          podman info --format 'Podman server {{.Version.Version}} on {{.Host.OS}}/{{.Host.Arch}}'
+        with:
+          podman-version-input: 'v6.1.3'  # 6.2.1 intermittently fails `podman machine init --now` with "already running"
 
       - name: WSL - Start Forgejo Server
         run: |
@@ -181,17 +172,8 @@ jobs:
 
       - name: Install Podman
         uses: redhat-actions/podman-install@9dae63d3196a33b7e35516387f5adb6a409bdff3 # v1.1.3
-        # Its `podman machine init --now` can fail with "already running"; the next step checks the machine instead.
-        continue-on-error: true
-
-      - name: Ensure Podman machine is running
-        run: |
-          podman machine inspect podman-machine-default *> $null
-          if ($LASTEXITCODE -ne 0) { podman machine init }
-          $state = podman machine inspect podman-machine-default --format '{{.State}}'
-          if ($state -ne 'running') { podman machine start }
-          podman machine list
-          podman info --format 'Podman server {{.Version.Version}} on {{.Host.OS}}/{{.Host.Arch}}'
+        with:
+          podman-version-input: 'v6.1.3'  # 6.2.1 intermittently fails `podman machine init --now` with "already running"
 
       - name: Windows - Set up Go
         uses: actions/setup-go@v6
