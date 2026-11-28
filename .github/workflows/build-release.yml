@@ -1,6 +1,7 @@
 # This workflow:
-#  - builds and uploads a binary artifact for each Windows architecture
+#  - builds and uploads a binary artifact for each Windows architecture and for macOS arm64
 #  - tests the runner on Windows with a Forgejo server container running on Windows Subsystem for Linux (WSL)
+#  - tests the runner on macOS with a native Forgejo server
 #  - releases the binary artifacts as a GitHub release
 
 name: Build Release
@@ -26,18 +27,32 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.architecture }}
+    name: Build ${{ matrix.goos }} ${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - architecture: '386'
+          - goos: windows
+            architecture: '386'
             os: windows-latest
-          - architecture: amd64
+            extension: .exe
+          - goos: windows
+            architecture: amd64
             os: windows-latest
-          - architecture: arm64
+            extension: .exe
+          - goos: windows
+            architecture: arm64
             os: windows-11-arm
+            extension: .exe
+          - goos: darwin
+            architecture: arm64
+            os: macos-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      BINARY: forgejo-runner-${{ matrix.goos }}-${{ matrix.architecture }}${{ matrix.extension }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,20 +66,20 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build for ${{ matrix.architecture }}
+      - name: Build for ${{ matrix.goos }} ${{ matrix.architecture }}
         run: |
-          $env:GOOS = 'windows'
+          $env:GOOS = '${{ matrix.goos }}'
           $env:GOARCH = '${{ matrix.architecture }}'
           # The Go module path carries the major version (e.g. .../runner/v13), derive it from the tag
           $major = ('${{ inputs.tag }}' -replace '^v', '').Split('.')[0]
           go build `
             -ldflags "-s -w -X code.forgejo.org/forgejo/runner/v$major/internal/pkg/ver.version=${{ inputs.tag }}" `
-            -o forgejo-runner-windows-${{ matrix.architecture }}.exe
+            -o $env:BINARY
 
       - name: Check Version Output
         if: inputs.goal != 'test-fork'
         run: |
-          $VERSION_OUTPUT = & .\forgejo-runner-windows-${{ matrix.architecture }}.exe --version
+          $VERSION_OUTPUT = & ./$env:BINARY --version
           if ($VERSION_OUTPUT -ne 'forgejo-runner version ${{ inputs.tag }}') {
             Write-Output "Version mismatch: got $VERSION_OUTPUT expected forgejo-runner version ${{ inputs.tag }}"
             exit 1
@@ -72,8 +87,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: forgejo-runner-windows-${{ matrix.architecture }}
-          path: forgejo-runner-windows-${{ matrix.architecture }}.exe
+          name: forgejo-runner-${{ matrix.goos }}-${{ matrix.architecture }}
+          path: ${{ env.BINARY }}
 
   test-runner:
     name: Run Tests on Windows with Linux Forgejo Server
@@ -204,9 +219,106 @@ jobs:
           path: test-results.json
           reporter: golang-json
 
+  test-runner-darwin:
+    name: Run Tests on macOS with native Forgejo Server
+    runs-on: macos-latest
+    env:
+      FORGEJO_ROOT_URL: 'http://localhost:3000/'
+      FORGEJO_RUNNER_SECRET: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          github-server-url: https://code.forgejo.org
+          repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
+          ref: ${{ inputs.tag }}
+          token: ${{ secrets.CODE_FORGEJO_TOKEN }}
+
+      # GitHub's arm64 macOS runners lack nested virtualization, so the server runs natively
+      - name: Start Forgejo Server
+        run: |
+          brew install forgejo
+          work="$RUNNER_TEMP/forgejo"
+          mkdir -p "$work/custom/conf"
+          cat > "$work/custom/conf/app.ini" <<EOF
+          WORK_PATH = $work
+          [database]
+          DB_TYPE = sqlite3
+          [server]
+          HTTP_PORT = 3000
+          ROOT_URL = $FORGEJO_ROOT_URL
+          [security]
+          INSTALL_LOCK = true
+          EOF
+          forgejo migrate --work-path "$work"
+          forgejo forgejo-cli actions register --work-path "$work" --labels docker --name therunner --secret "$FORGEJO_RUNNER_SECRET"
+          nohup forgejo web --work-path "$work" > "$work/forgejo.log" 2>&1 &
+          curl --silent --show-error --retry 30 --retry-connrefused --output /dev/null "$FORGEJO_ROOT_URL"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install dependencies
+        run: |-
+          go mod download
+          go install gotest.tools/gotestsum@v1.13.0
+
+      - name: Run tests
+        run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./internal/... -args -features "-"
+        env:
+          FORGEJO_URL: ${{ env.FORGEJO_ROOT_URL }}
+          FORGEJO_RUNNER_HEX_SECRET: ${{ env.FORGEJO_RUNNER_SECRET }}
+
+      - name: Report test results
+        uses: dorny/test-reporter@v2.6.0
+        if: ${{ !cancelled() }}
+        with:
+          name: Runner Tests macOS
+          path: test-results.json
+          reporter: golang-json
+
+  test-act-darwin:
+    name: Run Act Tests on macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          github-server-url: https://code.forgejo.org
+          repository: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}
+          ref: ${{ inputs.tag }}
+          token: ${{ secrets.CODE_FORGEJO_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install dependencies
+        run: |-
+          go mod download
+          go install gotest.tools/gotestsum@v1.13.0
+
+      - name: Run tests
+        run: gotestsum --jsonfile test-results.json --format pkgname -- -v ./act/... -args -features "-"
+        env:
+          ACT_REPOSITORY: ${{ inputs.goal == 'test-fork' && vars.TEST_FORK || 'forgejo/runner' }}  # Needed for TestRunContext_GetBindsAndMounts test case
+
+      - name: Report test results
+        uses: dorny/test-reporter@v2.6.0
+        if: ${{ !cancelled() }}
+        with:
+          name: Act Tests macOS
+          path: test-results.json
+          reporter: golang-json
+
   release:
     runs-on: ubuntu-latest
-    needs: [build, test-runner, test-act]
+    needs: [build, test-runner, test-act, test-runner-darwin, test-act-darwin]
     if: ${{ always() && needs.build.result == 'success' && inputs.goal != 'test-fork' && inputs.goal != 'test' }}
     permissions:
       contents: write
@@ -219,8 +331,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          files: forgejo-runner-windows-*/forgejo-runner-windows-*.exe
-          draft: ${{ needs.test-runner.result != 'success' || needs.test-act.result != 'success' || inputs.goal != 'release' }}
+          files: forgejo-runner-*/forgejo-runner-*
+          draft: ${{ needs.test-runner.result != 'success' || needs.test-act.result != 'success' || needs.test-runner-darwin.result != 'success' || needs.test-act-darwin.result != 'success' || inputs.goal != 'release' }}
           prerelease: ${{ contains(inputs.tag, 'beta') || contains(inputs.tag, 'alpha') }}
           fail_on_unmatched_files: true
           body: |
